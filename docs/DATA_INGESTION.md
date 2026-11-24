@@ -1,0 +1,71 @@
+# TERRALERT — Plan d’ingestion des données
+
+**Périmètre.** Pilote de 11 communes dans la zone de Tanger–Assilah. TERRALERT prépare des données pour quatre aléas (inondations, feux de forêt, vagues de chaleur et vagues de froid) et pour l’analyse de l’exposition territoriale par le HCP. Ce document sert de spécification de travail à l’équipe et à Codex. Les fichiers Drive et le catalogue de l’équipe ont été consultés le 24 novembre 2026.
+
+**Premier livrable.** Charger une réponse météo synthétique pour un point de Tanger, puis relire dans PostgreSQL le contenu et sa provenance. Ce test débloque le premier appel Open-Meteo. Les couches SIG et les archives suivent avec leurs propres contrôles.
+
+## 1. Données déjà présentes
+
+« Présent » signifie que le fichier a été localisé. Les constats sur la projection, la résolution et l’origine repris de la feuille de l’équipe restent à confirmer dans les métadonnées des fichiers lorsqu’ils servent à un import. Les liens pointent vers les données ou leurs répertoires.
+
+| Donnée | Disponible dans Drive | Usage et contrôle avant intégration |
+|---|---|---|
+| Limites du pilote | [`communes_11_fixed.gpkg`](https://drive.google.com/file/d/1uGUh0gDd_YcM0NqmbQGLoaZ9ZgH1tkQh/view). La feuille indique EPSG:32630 pour ce fichier et EPSG:26191 comme projection de travail. | Référentiel commun aux quatre aléas. Lire le CRS réel du fichier, vérifier 11 géométries valides et une clé communale stable et unique. Tester la correspondance de la clé avec les exports d’indicateurs. Reprojeter depuis le CRS déclaré et vérifié. |
+| Altitude et pente | [`DEM_TERRALERT_26191_NODATA.tif`](https://drive.google.com/file/d/1k2Jjt9yiS27kmWbyV4MDKuMchqFjDPF7/view), [`slope_degrees_11_communes.tif`](https://drive.google.com/file/d/1Jd_vg_geaaIssOo7irG2v_ZlHhQDuGrP/view). Le catalogue indique 30 m et NoData = −9999 pour le DEM traité. | Terrain pour les inondations et exposition au froid. Confirmer le producteur, le datum vertical, le CRS, l’emprise et la valeur NoData. Garder les cellules à zéro valides lorsqu’elles ne sont pas masquées. Vérifier que la pente est exprimée en degrés. |
+| Occupation du sol | [`occupation_sol_TERRALERT_26191_FIXED.tif`](https://drive.google.com/file/d/1ssezCSd2s04ZVkiyfo0goAJ2l4990l6m/view), raster catégoriel de 10 m selon le catalogue. | Contexte pour le ruissellement et le danger d’incendie. Confirmer la source d’origine, l’année et la légende des codes avant d’utiliser les pourcentages urbain, forêt et végétation. Utiliser le voisin le plus proche si une reprojection est nécessaire. |
+| Hydrographie | [`rivers_traced.gpkg`, `bassin_versant_tanger.gpkg`](https://drive.google.com/drive/folders/1KaXVE6i5itVtWt9F_GI0c9PBjznaxSRi) dans Raw, [`rivers_11_communes.gpkg`](https://drive.google.com/file/d/1IDJY_2LA7eseL4A7FxKt1LLpGtOytZQ3/view) dans Clean. | Drainage et bassins pour les inondations. Confirmer la source, l’emprise, la version et les unités de longueur avant usage. |
+| Population, équipements et indicateurs | [`population_26191.gpkg`](https://drive.google.com/file/d/1pzBduO9JHhshw0hvJ2Gzge4BeAqFT593/view), [`critical_infrastructure.gpkg`](https://drive.google.com/file/d/1oR2IsJrE5H_Ihwy3QFY3IB4Sb_jUDSdj/view), [`commune_indicators.csv`](https://drive.google.com/file/d/1NFXi2K1SM9tehEbkfSkrwtHzQL-6f43v/view) et [`indicators_occupation.csv`](https://drive.google.com/file/d/1mBqQFnbW0NiU9RcnQdr42OUrx2kEtXrP/view). Chaque CSV d’indicateurs contient 11 lignes et 11 identifiants `ISO` distincts. | Exposition et contexte territorial. Confirmer le millésime et le producteur démographique, la licence des équipements, l’unité de surface et la clé de jointure. Le second export renseigne les trois pourcentages dans la ligne échantillonnée. Confirmer la version canonique et la légende avant d’exploiter ces champs. |
+| Pluie historique maillée | [Six fichiers CHIRPS v3 TERRALERT nommés pour 2015–2020](https://drive.google.com/drive/folders/1rC8K0dnmQlYudyAgzq7d6ON5jEqK1Btf), au format NetCDF. Le produit CHIRPS v3 est maillé à 0,05°. [UCSB Climate Hazards Center](https://www.chc.ucsb.edu/data/) | Pluie historique et comparaison avec les événements datés. Vérifier la couverture réelle des jours dans chaque fichier, le pas de temps, les unités, la variante du produit, le masque, les coordonnées et le NoData avant d’étendre la période. Le nom annuel indique le rangement des fichiers. |
+| Météo historique de station | [`NCEI_Tangier_2000_2025.csv` et `tangier_meteostat_2000_2026.csv`](https://drive.google.com/drive/folders/1bIi-ZQKJOAJNyHddBD_CioKaCRjXjH6R). Le catalogue les décrit comme des séries horaires. | Contrôler identifiants et positions des stations, variables et unités, UTC ou heure locale, signaux de qualité, trous et recouvrement entre sources. Une comparaison par commune exige une méthode d’affectation documentée. Les dates des noms de fichiers restent à vérifier sur leur contenu. |
+| Inventaire des inondations | Deux fichiers `PAST_FLOODS.csv`. Voir l’audit ci-dessous. | Rapprocher les épisodes documentés et les conditions météo historiques. Conserver la provenance, le niveau de confiance et l’incertitude spatiale et temporelle. |
+| Feux historiques | [`historical_fires.gpkg`, inventaire historique hors FIRMS et CSV de surface brûlée](https://drive.google.com/drive/folders/1-ytOYBuNCihoICma7KYRq3jqfCiXpeGz). La feuille attribue le GPKG à FIRMS/MODIS et le CSV mensuel régional à GWIS/Copernicus. | Traiter séparément les points chauds, les incidents rapportés et les statistiques régionales de surface brûlée. Vérifier capteur, période, unités, emprise et statut de vérification. |
+
+Le catalogue de l’équipe documente les producteurs indiqués et la projection de travail Merchich / Nord Maroc (EPSG:26191, mètres). L’onglet de configuration indique également EPSG:3857 pour la carte web. [Catalogue TERRALERT](https://docs.google.com/spreadsheets/d/1DcHzrqA1H9TcGERAsNHMQTv8Vzh2PedQJHseyS8EVR4/edit)
+
+### Audit de `PAST_FLOODS.csv`
+
+| Copie | Résultat de lecture | Décision proposée |
+|---|---|---|
+| [Lien partagé directement](https://drive.google.com/file/d/1kSeWAmAWGbsFRgSwSd2CFKgfGVlH32aE/view) | Le parseur CSV standard lit un en-tête de 40 champs, mais 18 enregistrements ont une largeur différente. Plusieurs lignes combinent guillemets, virgules et points-virgules. | Conserver l’original. Suspendre l’import automatique de cette copie et documenter le défaut de format. |
+| [Copie du dossier Raw/Floods](https://drive.google.com/file/d/1x9T9luY4WFETdW5QknSqXC-8V8aEcw6p/view) | 103 enregistrements lisibles de 42 champs. L’en-tête comprend `coordinate_source_url` et `coordinate_quality`. Plusieurs noms de colonnes présentent encore des points-virgules en suffixe. | Candidate pour un import après validation du schéma et confirmation par le responsable des données. Archiver la source telle quelle, puis normaliser les en-têtes dans une copie de travail. |
+
+`event_id` regroupe les signalements d’un même épisode. `observation_id` identifie le signalement. Un épisode peut avoir plusieurs lieux et sources. Garder les champs `date_precision`, `verification_status`, `confidence_level`, les coordonnées lorsqu’elles existent et les liens d’origine. Une date connue à l’année reste une date à précision annuelle. Une commune ou une coordonnée incertaine reste à vérifier. Les enregistrements provisoires servent au rapprochement documentaire. Pour toute évaluation, définir des critères d’inclusion explicites. Les dates sans signalement restent de statut inconnu.
+
+## 2. Flux à ajouter ou à étendre
+
+Les fréquences ci-dessous sont des choix proposés pour le pilote. Les programmer après avoir vérifié les appels manuels. Les fichiers listés à la section 1 peuvent être importés à la demande et par version.
+
+| Flux | Quoi récupérer | Mode et cadence proposés | Usage |
+|---|---|---|---|
+| **Open-Meteo Forecast** | `hourly.time`, `hourly_units`, `precipitation`, `temperature_2m`, `relative_humidity_2m`, `wind_speed_10m`. Demander des heures UTC, conserver les unités reçues, les coordonnées demandées et celles retournées. Prévoir assez d’heures à venir pour couvrir deux fenêtres de pluie de 24 h et 72 h. Fixer plus tard le fuseau des agrégats journaliers pour les vagues de chaleur et de froid. | Un point de Tanger configuré pour le premier test en direct. Ensuite, choisir et documenter les points ou la stratégie de maillage pour les 11 communes. Proposer un appel toutes les 6 h après validation des besoins, limites et conditions d’usage. | Pluie prévue, températures extrêmes et variables météo utiles au danger de feu. [Documentation Open-Meteo](https://open-meteo.com/en/docs) |
+| **CHIRPS v3, extension** | Même variante et même pas temporel que le lot retenu. Prélever l’emprise du pilote, conserver version, période et provenance. | Inventorier les dates présentes, puis récupérer les années ou périodes manquantes selon la fenêtre historique convenue. | Historique pluviométrique. [UCSB Climate Hazards Center](https://www.chc.ucsb.edu/data/) |
+| **NASA FIRMS / VIIRS** | CSV d’une boîte englobante du pilote. Conserver latitude, longitude, date et heure d’acquisition, capteur ou satellite, confiance et FRP. | Après activation d’une clé, collecter par fenêtre glissante avec une cadence cible de 1 à 3 h, vérifier les doublons et rattacher aux communes en préparation. | Points chauds thermiques. La confirmation d’un incendie et la cartographie de son périmètre demandent des données complémentaires. [NASA FIRMS Area API](https://firms.modaps.eosdis.nasa.gov/api/area/) |
+| **Sentinel-2 L2A** | Identifiant de produit, tuile, heure d’acquisition, bandes rouge/proche infrarouge/infrarouge à ondes courtes, masque de qualité et couverture nuageuse sur le pilote. | Chercher de nouveaux produits selon leur disponibilité. Sélectionner les scènes exploitables avant de télécharger les bandes nécessaires. | NDVI pour le suivi de la végétation et NBR/dNBR pour l’évaluation post-feu. [Copernicus Sentinel-2](https://documentation.dataspace.copernicus.eu/Data/SentinelMissions/Sentinel2.html) |
+| **ERA5-Land, candidat** | Historique horaire maillé. Choisir les variables nécessaires après l’audit des stations. Conserver les unités et les conventions d’accumulation des champs sélectionnés. | Extraction par période et emprise si les stations ou CHIRPS ne couvrent pas un besoin précis. | Climatologie et comparaison avec les archives de station. [Copernicus Climate Data Store](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land?tab=overview) |
+
+Compléments à confirmer avec l’équipe. Année et source officielles des données démographiques, registre des 11 communes et clé de jointure, stratégie météo par commune, producteur du DEM, légende d’occupation des sols, et copie canonique de l’inventaire des crues. Pour le danger de feu, définir avec l’équipe les besoins de l’indice retenu, notamment la durée d’historique nécessaire, avant de figer les variables et la cadence.
+
+## 3. Contrat d’ingestion
+
+| Étape | Résultat attendu |
+|---|---|
+| Acquisition | Télécharger ou lire l’artefact source. Enregistrer le producteur, le jeu et sa version connue, la référence source, la date de récupération UTC et l’emprise ou le point demandé. Consigner les paramètres d’appel en excluant les clés et secrets. |
+| Contrôles d’entrée | Détecter erreur HTTP, fichier illisible, type inattendu et JSON malformé avant écriture. Lors de l’ajout d’un flux réel, vérifier ses champs structurants. Conserver les erreurs et l’état de l’exécution. |
+| Stockage brut | Réponse météo complète en `JSONB` avec `source`, `is_fixture` et `ingested_at` en UTC. Garder l’heure de validité dans le payload et l’heure d’émission séparément si la source l’expose. Pour les fichiers lourds, conserver l’original et enregistrer une référence contrôlée, la version, la taille et l’empreinte SHA-256. |
+| Relances et traçabilité | Journaliser statut, source et identifiant d’exécution. Les erreurs de lecture ou de téléchargement ne créent aucune ligne de données partielle. Pour les connecteurs récurrents, définir une identité de déduplication propre à chaque source et conserver les versions réellement distinctes. |
+| Passage à la préparation | Vérifier unités, longueur et ordre des séries, dates manquantes, CRS et emprise. Documenter les transformations de données et garder la possibilité de revenir à la source. Conserver la distinction entre pluie nulle, valeur absente et NoData. Les cumuls, les jointures spatiales et les calculs de risque s’appuient ensuite sur ce contrat. |
+
+## 4. Ordre de réalisation et critères d’acceptation
+
+| Lot | Travail | Preuve attendue |
+|---|---|---|
+| 1. Météo fictive | Confirmer santé de PostgreSQL/PostGIS, puis importer une fixture synthétique pour Tanger via une CLI et une migration. | La requête SQL relit le JSON, la source, le marqueur fictif et l’horodatage UTC. Zéro et null sont préservés. Une fixture malformée échoue et ne crée aucune ligne. |
+| 2. Météo réelle | Brancher Open-Meteo pour le même point et réutiliser le stockage brut. | L’appel réel est vérifié, les unités et les heures sont enregistrées, la ligne relue est marquée réelle et un échec réseau simulé laisse le nombre de lignes inchangé. |
+| 3. Référentiel et archives | Contrôler puis importer les 11 communes. Auditer un NetCDF CHIRPS et la copie candidate de `PAST_FLOODS.csv` avant import par lot. | 11 clés communales uniques et géométries valides. Un fichier pluie relu avec ses bornes temporelles, unités et valeurs manquantes. Un signalement de crue relu avec sa source et sa précision. |
+| 4. Élargissement | Ajouter stations, couches SIG, données d’exposition, puis surveillance satellite selon les accès et priorités du pilote. | Pour chaque source, un exemple relu, un échec reproductible, une règle de relance, une provenance et le périmètre effectif. |
+
+## Sources du projet
+
+- [Dossier TERRALERT dans Drive](https://drive.google.com/drive/folders/1Wzv6F_sl1kKlBdmC5byQz4iJyPbCHbLk?usp=sharing)
+- [Objectifs du projet et périmètre pilote](https://docs.google.com/document/d/1ctp8KlfcN5_9RmhQpncglMos8moZgElqCWlQqmo8Arw/edit)
+- [Plan d’architecture et de mise en œuvre TERRALERT, sections 2 à 6 et 9 à 11](https://chatgpt.com/library?file_id=libfile_70a23dc230f08191bcd41168671bc384&account_id=personal)

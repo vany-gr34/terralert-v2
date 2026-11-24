@@ -221,3 +221,36 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# TERRALERT local credentials, tools and source data
+.env.*
+!.env.example
+.agents/
+.codex/
+.aws/
+.ssh/
+secrets/
+*.pem
+*.key
+/data/
+/Raw/
+/Clean/
+/raw/
+/clean/
+/tmp/
+/outputs/
+/backups/
+/dumps/
+*.gpkg
+*.gpkg-*
+*.nc
+*.tif
+*.tiff
+*.sqlite
+*.sqlite3
+*.dump
+*.backup
+*.sql.gz
+*.csv
+!config/*.csv
+!fixtures/*.csv
