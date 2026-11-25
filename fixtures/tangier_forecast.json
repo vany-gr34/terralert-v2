@@ -1,0 +1,15 @@
+{
+  "description": "Synthetic test data for Tangier, Morocco",
+  "latitude": 35.76,
+  "longitude": -5.83,
+  "timezone": "UTC",
+  "hourly_units": {
+    "precipitation": "mm",
+    "temperature_2m": "°C"
+  },
+  "hourly": {
+    "time": ["2026-11-24T09:00:00Z", "2026-11-24T10:00:00Z", "2026-11-24T11:00:00Z"],
+    "precipitation": [0, null, 1.25],
+    "temperature_2m": [16.1, 16.8, 17.3]
+  }
+}
